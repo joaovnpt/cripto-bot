@@ -3,7 +3,7 @@ const axios = require("axios");
 const SYMBOL = "BTCUSDT";
 const PERIOD = 14;
 
-const TEST_API_URL = "http://testnet.binance.vision";
+const TEST_API_URL = "http://api.binance.com";
 
 function averages(prices, period, startIndex) {
   let gains = 0,
@@ -11,15 +11,34 @@ function averages(prices, period, startIndex) {
 
   for (let i = 0; i < period && i + startIndex < prices.length; i++) {
     const diff = prices[i + startIndex] - prices[i + startIndex - 1];
-    if (diff >= 0) 
-      gains += diff;
-    else 
-      losses += Math.abs(diff);
+    if (diff >= 0) gains += diff;
+    else losses += Math.abs(diff);
   }
 
-  let avgGains = gains / period
-  let avgLosses = losses / period
-  return { avgGains, avgLosses }
+  let avgGains = gains / period;
+  let avgLosses = losses / period;
+  return { avgGains, avgLosses };
+}
+
+function RSI(prices, period) {
+  let avgGains = 0,
+    avgLosses = 0;
+
+  for (let i = 1; i < prices.length; i++) {
+    let newAverages = averages(prices, period, i);
+
+    if (i === 1) {
+      avgGains = newAverages.avgGains;
+      avgLosses = newAverages.avgLosses;
+      continue;
+    }
+
+    avgGains = (avgGains * (period - 1) + newAverages.avgGains) / period;
+    avgLosses = (avgLosses * (period - 1) + newAverages.avgLosses) / period;
+  }
+
+  const rs = avgGains / avgLosses;
+  return 100 - 100 / (1 + rs);
 }
 
 let isOpenned = false; //Estar aberto, na linguagem trader é ter comprado uma ação
@@ -29,19 +48,23 @@ async function start() {
     TEST_API_URL + "/api/v3/klines?limit=100&interval=15m&symbol=" + SYMBOL
   );
   const candle = data[data.length - 1];
-  const price = parseFloat(candle[4]);
-  console.clear();
-  console.log("BTC Price : " + price);
-  setTimeout(() => console.log("Refreshing..."), 500);
+  const lastPrice = parseFloat(candle[4]);
 
-  if (price <= BUY_PRICE && isOpenned === false) {
+  console.clear();
+  console.log("BTC Price : " + lastPrice);
+
+  const prices = data.map((k) => parseFloat(k[4]));
+  const rsi = RSI(prices, PERIOD);
+  console.log("RSI: " + rsi);
+
+  if (rsi < 30 && isOpenned === false) {
     isOpenned = true;
-    console.log("buying...");
-  } else if (price >= SELL_PRICE && isOpenned === true) {
+    console.log("sobrevendido, hora de comprar.");
+  } else if (rsi > 70 && isOpenned === true) {
     isOpenned = false;
-    console.log("selling...");
+    console.log("sobrecomprado, hora de vender.");
   } else {
-    console.log("waiting");
+    console.log("Aguardar.");
   }
 }
 
